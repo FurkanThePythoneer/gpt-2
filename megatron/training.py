@@ -563,6 +563,7 @@ def train(
     # get noise scale logger (if neox_args.log_gradient_noise_scale is True)
     noise_scale_logger = get_noise_scale_logger(neox_args)
 
+    dummy_num = 0
     # to monitor if we've skipped many iterations in a row and trigger an early exit
     overflow_monitor = OverflowMonitor(optimizer)
     while iteration < neox_args.train_iters:
@@ -639,21 +640,25 @@ def train(
 
             # if we have a validation loss, check for early stopping patience
             # vall loss vs val ppl
-            if neox_args.patience:                    
-                if not val_lm_loss: # for first step just once
-                    val_lm_loss = val_loss_dict['lm_loss']
+            if neox_args.patience:
+                if dummy_num == 0: # first epoch
+                    best_val_loss = 999
                 else:
-                    if val_lm_loss > val_loss_dict['lm_loss']: # means model improved
-                        best_loss = val_loss_dict['lm_loss']
-                        patience = 0 # reset 
-                    else:
-                        # model not improved 
-                        patience += 1
+                    if best_val_loss > val_loss_dict['lm_loss']: # model improved
+                        
+                        print_rank_0(f"NeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}")
+                        best_val_loss = val_loss_dict['lm_loss']
+                        
+                        patience = 0
+                    
+                    else: # model not improved
                         print_rank_0("NeoX val loss not improved")
+                        patience += 1
                         if patience == neox_args.patience:
                             print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
                             break
-                    
+                        
+            dummy_num += 1
 
         if neox_args.exit_interval and iteration % neox_args.exit_interval == 0:
             torch.distributed.barrier()
