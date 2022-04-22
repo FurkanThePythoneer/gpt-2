@@ -639,7 +639,6 @@ def train(
 
             # if we have a validation loss, check for early stopping patience
             # vall loss vs val ppl
-            # guys you think it's better to save a transformer checkpoint on best val loss or best val perplexity?
             if neox_args.patience:                    
                 if not val_lm_loss: # for first step just once
                     val_lm_loss = val_loss_dict['lm_loss']
