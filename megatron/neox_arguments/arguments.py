@@ -263,6 +263,13 @@ class NeoXArgs(*BASE_CLASSES):
         group = parser.add_argument_group(title="Eval args")
 
         group.add_argument(
+            "--patience",
+            type=int,
+            default=None,
+            help="patience for early stopping"
+        )
+
+        group.add_argument(
             "--eval_tasks",
             type=str,
             nargs="+",

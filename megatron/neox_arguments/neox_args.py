@@ -606,6 +606,11 @@ class NeoXArgsOther(NeoXArgsTemplate):
     Set during launching
     """
 
+    patience: int = 0
+    """
+    Patience for early stopping
+    """
+
 
 @dataclass
 class NeoXArgsTokenizer(NeoXArgsTemplate):
