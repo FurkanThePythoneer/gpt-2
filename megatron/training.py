@@ -400,12 +400,15 @@ def get_learning_rate_scheduler(optimizer, neox_args):
 
 
 def early_stopping_fn(patience: int, val_loss_dict: dict, val_iter: int, monitor: str):
-    """Early stopping fn for early stopping
-    patience: neox_args.patience -> any integer
-    val_loss_dict: dict returned by evaluate_and_print_results() fn
-    val_iter: int
-    monitor: monitoring type, one of 'val_loss', 'val_ppl'
+    # write a short doc for this function:
     """
+    Early stopping function that checks the monitor metric (e.g. val_loss)
+    patience: number of epochs to wait for improvement before stopping training.
+    val_loss_dict: dictionary of validation losses.
+    val_iter: current validation iteration.
+    monitor: the metric to monitor for early stopping. One of `val_loss`, `val_ppl`
+    """
+
     if val_iter == 0: # first epoch
         if monitor == "val_loss":
             best_val_loss = np.inf
@@ -691,7 +694,7 @@ def train(
             if neox_args.patience:
                 _break = early_stopping_fn(patience=neox_args.patience,
                                            val_loss_dict=val_loss_dict,
-                                           monitor=neox_args.patience, 
+                                           monitor=neox_args.patience_monitor, 
                                            val_iter=val_iter)
                 
                 if _break:
