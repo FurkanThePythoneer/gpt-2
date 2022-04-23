@@ -41,7 +41,7 @@
   },
 
    # batch / data settings
-   "train_micro_batch_size_per_gpu": 4,
+   "train_micro_batch_size_per_gpu": 6,
    "data-impl": "mmap",
    "split": "949,50,1",
 
@@ -67,19 +67,19 @@
    },
 
    # misc. training settings
-   "train-iters": 320000,
-   "lr-decay-iters": 320000,
+   "train-iters": 2000,
+   "lr-decay-iters": 2000,
    "distributed-backend": "nccl",
    "lr-decay-style": "cosine",
-   "warmup": 0.01,
-   "save-interval": 10000,
-   "eval-interval": 1000,
+   "warmup": 0.1,
+   "save-interval": 100,
+   "eval-interval": 100,
    "eval-iters": 10,
-   "patience": 7, # early stopping patience 
+   "patience": 1, # early stopping patience 
 
    # logging
    "log-interval": 100,
    "steps_per_print": 10,
-   "keep-last-n-checkpoints": 4,
+   "keep-last-n-checkpoints": 1,
    "wall_clock_breakdown": true,
 }
