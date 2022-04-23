@@ -263,6 +263,12 @@ class NeoXArgs(*BASE_CLASSES):
         group = parser.add_argument_group(title="Eval args")
 
         group.add_argument(
+            "--patience_monitor",
+            type=int,
+            default=None,
+            help="patience monitor to apply patience"
+        )
+        group.add_argument(
             "--patience",
             type=int,
             default=None,

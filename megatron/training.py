@@ -28,6 +28,8 @@ import sys
 import torch
 import deepspeed
 import numpy as np
+from transformers import FlaxMBartForSequenceClassification
+from megatron.neox_arguments import neox_args
 
 from megatron.utils import (
     Timers,
@@ -311,7 +313,7 @@ def get_optimizer(model, neox_args):
     elif neox_args.optimizer_type.lower() == "onebitadam":
         assert neox_args.deepspeed
         optimizer = None
-        # onebitadam needs to be instantiated within the deepspeed engine to work :|
+        # onebitadam needs to be instantiated within the deepspeed engine to work :| 
     elif neox_args.optimizer_type.lower() == "sm3":
         from .optimizers import SM3
 
@@ -395,6 +397,54 @@ def get_learning_rate_scheduler(optimizer, neox_args):
     )
 
     return lr_scheduler
+
+
+def early_stopping_fn(patience: int, val_loss_dict: dict, val_iter: int, monitor: str):
+    """Early stopping fn for early stopping
+    patience: neox_args.patience -> any integer
+    val_loss_dict: dict returned by evaluate_and_print_results() fn
+    val_iter: int
+    monitor: monitoring type, one of 'val_loss', 'val_ppl'
+    """
+    if val_iter == 0: # first epoch
+        if monitor == "val_loss":
+            best_val_loss = np.inf
+        if monitor == "val_ppl":
+            best_val_ppl  = np.inf
+        else:
+            raise ValueError(f"Unknown monitor type: {monitor}, choose one of `val_loss`, `val_ppl`")
+    else:
+        if monitor == "val_loss":
+            if best_val_loss > val_loss_dict['lm_loss']:
+                print_rank_0("-"*101 + f"\nNeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}, setting patience to zero\n"+"-"*101)
+                best_val_loss = val_loss_dict['lm_loss']
+                patience = 0
+                _break = False
+            else:
+                print_rank_0("-"*101+"\nNeoX val loss not improved\n"+"-"*101)
+                patience += 1
+                if patience == neox_args.patience:
+                    print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
+                    _break = True
+        
+        elif monitor == "val_ppl":
+            if best_val_ppl > val_loss_dict['lm_loss_ppl']:
+                print_rank_0("-"*101 + f"\nNeoX val perplexity improved from {best_val_ppl} to {val_loss_dict['lm_loss_ppl']}, setting patience to zero\n"+"-"*101)
+                best_val_ppl = val_loss_dict['lm_loss']
+                patience = 0
+                _break = False
+
+            else:
+                print_rank_0("-"*101+"\nNeoX val perplexity not improved\n"+"-"*101)
+                patience+=1
+                if patience == neox_args.patience:
+                    print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
+                    _break = True
+                else:
+                    _break = False
+
+            
+    return _break
 
 
 def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
@@ -563,7 +613,7 @@ def train(
     # get noise scale logger (if neox_args.log_gradient_noise_scale is True)
     noise_scale_logger = get_noise_scale_logger(neox_args)
 
-    dummy_num = 0
+    val_iter = 0
     # to monitor if we've skipped many iterations in a row and trigger an early exit
     overflow_monitor = OverflowMonitor(optimizer)
     while iteration < neox_args.train_iters:
@@ -638,27 +688,16 @@ def train(
                 timers=timers,
             )
 
-            # if we have a validation loss, check for early stopping patience
-            # ppl is better to use 
             if neox_args.patience:
-                if dummy_num == 0: # first epoch
-                    best_val_loss = 999
-                else:
-                    if best_val_loss > val_loss_dict['lm_loss']: # model improved
-                        
-                        print_rank_0(f"NeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}. Setting patience to zero.")
-                        best_val_loss = val_loss_dict['lm_loss']
-                        
-                        patience = 0
-                    
-                    else: # model not improved
-                        print_rank_0("NeoX val loss not improved")
-                        patience += 1
-                        if patience == neox_args.patience:
-                            print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
-                            break
-                        
-            dummy_num += 1
+                _break = early_stopping_fn(patience=neox_args.patience,
+                                           val_loss_dict=val_loss_dict,
+                                           monitor=neox_args.patience, 
+                                           val_iter=val_iter)
+                
+                if _break:
+                    break
+                
+            val_iter += 1 # means that succesfully completed eval step
 
         if neox_args.exit_interval and iteration % neox_args.exit_interval == 0:
             torch.distributed.barrier()

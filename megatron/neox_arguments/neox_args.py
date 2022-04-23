@@ -611,6 +611,11 @@ class NeoXArgsOther(NeoXArgsTemplate):
     Patience for early stopping
     """
 
+    patience_monitor: str = "val_loss"
+    """
+    which metric to apply the patience
+    """
+
 
 @dataclass
 class NeoXArgsTokenizer(NeoXArgsTemplate):
