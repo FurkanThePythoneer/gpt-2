@@ -696,8 +696,8 @@ def train(
                 
                 if _break:
                     break
-                
-            val_iter += 1 # means that succesfully completed eval step
+
+            val_iter += 1 # means that we've seen at least one validation iteration -> co-pilot completion lol
 
         if neox_args.exit_interval and iteration % neox_args.exit_interval == 0:
             torch.distributed.barrier()
