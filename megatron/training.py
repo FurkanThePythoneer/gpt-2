@@ -639,14 +639,14 @@ def train(
             )
 
             # if we have a validation loss, check for early stopping patience
-            # vall loss vs val ppl
+            # ppl is better to use 
             if neox_args.patience:
                 if dummy_num == 0: # first epoch
                     best_val_loss = 999
                 else:
                     if best_val_loss > val_loss_dict['lm_loss']: # model improved
                         
-                        print_rank_0(f"NeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}")
+                        print_rank_0(f"NeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}. Setting patience to zero.")
                         best_val_loss = val_loss_dict['lm_loss']
                         
                         patience = 0
