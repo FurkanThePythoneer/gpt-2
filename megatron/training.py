@@ -399,49 +399,27 @@ def get_learning_rate_scheduler(optimizer, neox_args):
 
     return lr_scheduler
 
-def early_stopping_fn(neox_args, val_loss_dict: dict, val_iter: int): #monitor: str):
-    """this function checks if the validation loss or val perplexity has gone up for the last `patience` number of iterations"""
 
-    if val_iter == 0: # first epoch
-        if neox_args.patience_monitor == "val_loss":
-            best_val_loss = np.inf
-        if neox_args.patience_monitor == "val_ppl":
-            best_val_ppl  = np.inf
-        else:
-            raise ValueError(f"Unknown monitor type: {neox_args.patience_monitor}, choose one of `val_loss`, `val_ppl`")
+def early_stopping_fn(neox_patience: int, val_loss_dict: dict, val_iter: int, local_patience: int):
+    _break = False 
+    # Early stopping
+    if val_iter == 0: # first iteration
+        best_val_loss = 999
     else:
-        if neox_args.patience_monitor == "val_loss":
-            if best_val_loss > val_loss_dict['lm_loss']:
-                print_rank_0("-"*101 + f"\nNeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}, setting patience to zero\n"+"-"*101)
-                best_val_loss = val_loss_dict['lm_loss']
-                patience = 0
-                _break = False
-            else:
-                print_rank_0("-"*101+"\nNeoX val loss not improved\n"+"-"*101)
-                patience += 1
-                if patience == neox_args.patience:
-                    print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
-                    _break = True
-        
-        elif neox_args.patience_monitor == "val_ppl":
-            if best_val_ppl > val_loss_dict['lm_loss_ppl']:
-                print_rank_0("-"*101 + f"\nNeoX val perplexity improved from {best_val_ppl} to {val_loss_dict['lm_loss_ppl']}, setting patience to zero\n"+"-"*101)
-                best_val_ppl = val_loss_dict['lm_loss']
-                patience = 0
-                _break = False
+        if best_val_loss > val_loss_dict['lm_loss']: # if we've improved
+            print_rank_0("-"*101 + f"\nNeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}, setting patience to zero\n"+"-"*101)
+            best_val_loss = val_loss_dict['lm_loss']
+            local_patience = 0
 
-            else:
-                print_rank_0("-"*101+"\nNeoX val perplexity not improved\n"+"-"*101)
-                patience+=1
-                if patience == neox_args.patience:
-                    print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
-                    _break = True
-                else:
-                    _break = False
+        else: # if we've not improved
+            local_patience += 1
+            print_rank_0("-"*101 + f"NeoX val loss did not improve from {best_val_loss}, patience is now {local_patience}" + "-"*101)
 
+            if local_patience == neox_patience:
+                print_rank_0("-"*101 + f"\nNeoX patience reached {neox_patience}, exiting\n" + "-"*101)
+                _break = True
             
-    return _break
-
+    return _break, local_patience
 
 def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
     """Setup model and optimizer."""
@@ -609,9 +587,10 @@ def train(
     # get noise scale logger (if neox_args.log_gradient_noise_scale is True)
     noise_scale_logger = get_noise_scale_logger(neox_args)
 
-    val_iter = 0
+    
     # to monitor if we've skipped many iterations in a row and trigger an early exit
     overflow_monitor = OverflowMonitor(optimizer)
+    val_iter = 0 
     while iteration < neox_args.train_iters:
         loss_dict, skipped_iter = train_step(
             neox_args=neox_args,
@@ -685,18 +664,15 @@ def train(
             )
 
             if neox_args.patience:
-                #_break = early_stopping_fn(patience=neox_args.patience,
-                #                           val_loss_dict=val_loss_dict,
-                #                           monitor=neox_args.patience_monitor, 
-                #                           val_iter=val_iter)
-                _break = early_stopping_fn(neox_args=neox_args,
-                                           val_loss_dict=val_loss_dict,
-                                           val_iter=val_iter)
-                
-                if _break:
+                early_stop, patience = early_stopping_fn(neox_patience=neox_args.patience,
+                                                         val_loss_dict=val_loss_dict,
+                                                         val_iter=val_iter,
+                                                         local_patience=patience)
+
+                if early_stop:
                     break
 
-            val_iter += 1 # means that we've seen at least one validation iteration -> co-pilot completion lol
+            val_iter+=1                        
 
         if neox_args.exit_interval and iteration % neox_args.exit_interval == 0:
             torch.distributed.barrier()
