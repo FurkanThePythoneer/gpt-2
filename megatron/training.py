@@ -24,6 +24,7 @@ from functools import partial
 
 import math
 import sys
+from typing import Any
 
 import torch
 import deepspeed
@@ -398,26 +399,18 @@ def get_learning_rate_scheduler(optimizer, neox_args):
 
     return lr_scheduler
 
-
-def early_stopping_fn(patience: int, val_loss_dict: dict, val_iter: int, monitor: str):
-    # write a short doc for this function:
-    """
-    Early stopping function that checks the monitor metric (e.g. val_loss)
-    patience: number of epochs to wait for improvement before stopping training.
-    val_loss_dict: dictionary of validation losses.
-    val_iter: current validation iteration.
-    monitor: the metric to monitor for early stopping. One of `val_loss`, `val_ppl`
-    """
+def early_stopping_fn(neox_args, val_loss_dict: dict, val_iter: int): #monitor: str):
+    """this function checks if the validation loss or val perplexity has gone up for the last `patience` number of iterations"""
 
     if val_iter == 0: # first epoch
-        if monitor == "val_loss":
+        if neox_args.patience_monitor == "val_loss":
             best_val_loss = np.inf
-        if monitor == "val_ppl":
+        if neox_args.patience_monitor == "val_ppl":
             best_val_ppl  = np.inf
         else:
-            raise ValueError(f"Unknown monitor type: {monitor}, choose one of `val_loss`, `val_ppl`")
+            raise ValueError(f"Unknown monitor type: {neox_args.patience_monitor}, choose one of `val_loss`, `val_ppl`")
     else:
-        if monitor == "val_loss":
+        if neox_args.patience_monitor == "val_loss":
             if best_val_loss > val_loss_dict['lm_loss']:
                 print_rank_0("-"*101 + f"\nNeoX val loss improved from {best_val_loss} to {val_loss_dict['lm_loss']}, setting patience to zero\n"+"-"*101)
                 best_val_loss = val_loss_dict['lm_loss']
@@ -430,7 +423,7 @@ def early_stopping_fn(patience: int, val_loss_dict: dict, val_iter: int, monitor
                     print_rank_0(f"NeoX not improved for {neox_args.patience} epochs, exiting training")
                     _break = True
         
-        elif monitor == "val_ppl":
+        elif neox_args.patience_monitor == "val_ppl":
             if best_val_ppl > val_loss_dict['lm_loss_ppl']:
                 print_rank_0("-"*101 + f"\nNeoX val perplexity improved from {best_val_ppl} to {val_loss_dict['lm_loss_ppl']}, setting patience to zero\n"+"-"*101)
                 best_val_ppl = val_loss_dict['lm_loss']
@@ -692,9 +685,12 @@ def train(
             )
 
             if neox_args.patience:
-                _break = early_stopping_fn(patience=neox_args.patience,
+                #_break = early_stopping_fn(patience=neox_args.patience,
+                #                           val_loss_dict=val_loss_dict,
+                #                           monitor=neox_args.patience_monitor, 
+                #                           val_iter=val_iter)
+                _break = early_stopping_fn(neox_args=neox_args,
                                            val_loss_dict=val_loss_dict,
-                                           monitor=neox_args.patience_monitor, 
                                            val_iter=val_iter)
                 
                 if _break:
